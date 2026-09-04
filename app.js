@@ -967,7 +967,22 @@ if (typeof document !== "undefined") {
   renderHome();
   showScreen("home");
 
+  // A page load is always served by whichever service worker was already in
+  // control, so the first open after a deploy shows the old version and only
+  // the second shows the new one. When a newly installed worker takes over,
+  // reload once so the update lands immediately instead of next time.
   if ("serviceWorker" in navigator) {
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      // No previous controller means this is the very first registration,
+      // and the page is already current — reloading would be pointless.
+      if (!hadController || reloading) return;
+      reloading = true;
+      location.reload();
+    });
+
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch(() => {});
     });

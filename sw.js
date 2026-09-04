@@ -5,7 +5,7 @@
 // new app.js never loaded. Network-first keeps the app working offline (the
 // cache is still there as a fallback) while always preferring fresh files.
 
-const CACHE_NAME = "cycle-app-v3";
+const CACHE_NAME = "cycle-app-v4";
 const FILES_TO_CACHE = [
   "./index.html",
   "./app.js",
@@ -15,8 +15,19 @@ const FILES_TO_CACHE = [
 ];
 
 self.addEventListener("install", (event) => {
+  // `cache.addAll` would fetch through the browser's HTTP cache and could
+  // precache the very stale files this worker exists to replace, so fetch
+  // each one with cache: "reload" to force a trip to the server.
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(
+        FILES_TO_CACHE.map((file) =>
+          fetch(file, { cache: "reload" })
+            .then((response) => cache.put(file, response))
+            .catch(() => {})
+        )
+      )
+    )
   );
   self.skipWaiting();
 });
