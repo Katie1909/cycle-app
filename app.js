@@ -193,6 +193,14 @@ function dayIndexFor(dateIso) {
   return daysBetween(new Date(2000, 0, 1), parseLocalDate(dateIso));
 }
 
+// Picks the day's line for a phase. Same date always gives the same line;
+// consecutive days differ.
+function quoteFor(quotes, phase, dateIso) {
+  const pool = quotes[phase];
+  if (!pool || pool.length === 0) return null;
+  return pool[dayIndexFor(dateIso) % pool.length];
+}
+
 // Rotates through a phase's options so a week-long phase doesn't serve the
 // same dinner seven nights running. Falls back to any compatible recipe if
 // the phase's own options are all filtered out by dietary settings.
@@ -234,6 +242,7 @@ if (typeof module !== "undefined") {
     suggestedRecipeId,
     pluraliseItem,
     formatIngredient,
+    quoteFor,
   };
 }
 
@@ -366,6 +375,10 @@ if (typeof document !== "undefined") {
     } else {
       daysUntilEl.textContent = "";
     }
+
+    const quote = quoteFor(QUOTES, phase, isoFromDate(today));
+    document.getElementById("hero-quote").textContent = quote ? quote.text : "";
+    document.getElementById("hero-quote-tone").textContent = quote ? quote.tone : "";
 
     document.getElementById("food-focus").textContent = info.food.focus;
     renderList("food-eat", info.food.eat);

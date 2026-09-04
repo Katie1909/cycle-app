@@ -530,6 +530,52 @@ const CONTENT = {
   },
 };
 
+// A line for the home screen, rotating daily. Tone is matched to the phase:
+// gentle and funny when energy is low, inspirational as it climbs, sassy at
+// the peak, wry when the luteal irritability lands.
+//
+// These are written for this app rather than quoted from anyone — no
+// attribution problems, and the tone can be tuned exactly to the phase.
+const QUOTES = {
+  menstrual: [
+    { text: "Rest is not the reward for finishing. It's part of the work.", tone: "inspirational" },
+    { text: "You are allowed to cancel things. That is what phones are for.", tone: "funny" },
+    { text: "Today's ambition: horizontal, and warm.", tone: "quirky" },
+    { text: "The washing will still be there tomorrow. It is very loyal like that.", tone: "funny" },
+    { text: "Low energy is not a character flaw. It's a Tuesday.", tone: "fun" },
+    { text: "Be as kind to yourself as you'd be to someone you love.", tone: "inspirational" },
+    { text: "Hot water bottle: still undefeated.", tone: "quirky" },
+  ],
+  follicular: [
+    { text: "This is the week the ideas come back. Write them down.", tone: "inspirational" },
+    { text: "Start the thing. You can always make it better later.", tone: "inspirational" },
+    { text: "Fresh page energy. Use it before it wanders off.", tone: "fun" },
+    { text: "Say yes to something slightly too ambitious today.", tone: "fun" },
+    { text: "Your brain is on your side this week. Take the advantage.", tone: "inspirational" },
+    { text: "New week, new haircut ideas you will not act on.", tone: "funny" },
+    { text: "Momentum is easier to keep than to find. Go.", tone: "inspirational" },
+  ],
+  ovulatory: [
+    { text: "Peak everything. Absolutely insufferable, and entirely earned.", tone: "sassy" },
+    { text: "You didn't come this far to be quiet about it.", tone: "sassy" },
+    { text: "Take up the whole room. It's yours this week.", tone: "sassy" },
+    { text: "Ask for the thing. The worst answer is no.", tone: "inspirational" },
+    { text: "If not now, when? Genuinely. This is the window.", tone: "fun" },
+    { text: "Main character energy, and this time it's hormonal fact.", tone: "sassy" },
+    { text: "Go be excellent, and just a little smug about it.", tone: "sassy" },
+  ],
+  luteal: [
+    { text: "Everything is fine. Everyone is annoying. Both can be true.", tone: "funny" },
+    { text: "Snacks are a legitimate coping strategy.", tone: "funny" },
+    { text: "Lower the bar. Then step over it triumphantly.", tone: "quirky" },
+    { text: "You do not have to fix your entire life tonight.", tone: "inspirational" },
+    { text: "Nothing needs deciding today. Especially not that.", tone: "inspirational" },
+    { text: "If someone chews loudly today, that is on them.", tone: "sassy" },
+    { text: "Feelings are big this week. They are also temporary.", tone: "inspirational" },
+    { text: "Cancel it. Wear the soft trousers. Nobody is watching.", tone: "quirky" },
+  ],
+};
+
 const DIETARY_OPTIONS = [
   { id: "gluten-free", label: "Gluten-free" },
   { id: "dairy-free", label: "Dairy-free" },
@@ -537,5 +583,5 @@ const DIETARY_OPTIONS = [
 ];
 
 if (typeof module !== "undefined") {
-  module.exports = { CONTENT, RECIPES, DIETARY_OPTIONS };
+  module.exports = { CONTENT, RECIPES, QUOTES, DIETARY_OPTIONS };
 }

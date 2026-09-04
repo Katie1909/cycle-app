@@ -258,6 +258,51 @@
     assertEqual(dayIndexFor("2026-09-05") - dayIndexFor("2026-09-04"), 1, "day index advances by one per day");
   }
 
+  // ---- daily quote ----
+  {
+    const phases = ["menstrual", "follicular", "ovulatory", "luteal"];
+    const allowedTones = ["inspirational", "fun", "funny", "quirky", "sassy"];
+
+    assertTrue(phases.every((p) => QUOTES[p] && QUOTES[p].length >= 7),
+      "every phase has at least 7 quotes to rotate through");
+
+    assertTrue(
+      phases.every((p) => QUOTES[p].every((q) => q.text && allowedTones.includes(q.tone))),
+      "every quote has text and one of the five agreed tones"
+    );
+
+    // The tone has to actually match what the phase needs.
+    assertTrue(
+      QUOTES.ovulatory.filter((q) => q.tone === "sassy").length >= 3,
+      "ovulatory (peak confidence) leans sassy"
+    );
+    assertTrue(
+      QUOTES.luteal.filter((q) => q.tone === "funny" || q.tone === "quirky").length >= 3,
+      "luteal leans funny/quirky, when the humour is most needed"
+    );
+    assertTrue(
+      QUOTES.follicular.filter((q) => q.tone === "inspirational").length >= 3,
+      "follicular (energy climbing) leans inspirational"
+    );
+    assertEqual(
+      QUOTES.menstrual.filter((q) => q.tone === "sassy").length, 0,
+      "menstrual has no sassy lines — wrong tone for a rest phase"
+    );
+
+    // Rotation behaves like the meal rotation.
+    const a = quoteFor(QUOTES, "luteal", "2026-09-04");
+    assertEqual(quoteFor(QUOTES, "luteal", "2026-09-04").text, a.text, "the same date gives the same quote");
+    assertTrue(quoteFor(QUOTES, "luteal", "2026-09-05").text !== a.text, "consecutive days give different quotes");
+
+    const week = [];
+    for (let i = 0; i < 7; i++) {
+      week.push(quoteFor(QUOTES, "luteal", `2026-09-0${4 + i}`).text);
+    }
+    assertTrue(new Set(week).size === 7, "a week in one phase shows 7 different quotes");
+
+    assertEqual(quoteFor({}, "luteal", "2026-09-04"), null, "a phase with no quotes returns null rather than crashing");
+  }
+
   const list = document.getElementById("results");
   let passCount = 0;
   for (const r of results) {
