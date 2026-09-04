@@ -376,9 +376,10 @@ if (typeof document !== "undefined") {
       daysUntilEl.textContent = "";
     }
 
+    // `tone` stays in the data so quotes can be curated per phase, but it
+    // isn't shown — the line should just land, not announce itself.
     const quote = quoteFor(QUOTES, phase, isoFromDate(today));
     document.getElementById("hero-quote").textContent = quote ? quote.text : "";
-    document.getElementById("hero-quote-tone").textContent = quote ? quote.tone : "";
 
     document.getElementById("food-focus").textContent = info.food.focus;
     renderList("food-eat", info.food.eat);
