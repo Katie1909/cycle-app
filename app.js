@@ -99,6 +99,117 @@ function validateNewPeriodDate(dateString, periods, today) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------------------
+// Servings + recipe scaling. A toddler counts as half an adult portion.
+// ---------------------------------------------------------------------------
+
+const TODDLER_PORTION = 0.5;
+
+function portionsFor(settings) {
+  const adults = settings.adults ?? 2;
+  const children = settings.children ?? 0;
+  return adults + children * TODDLER_PORTION;
+}
+
+function scaleFactor(recipe, settings) {
+  const base = recipe.baseServings || 2;
+  const factor = portionsFor(settings) / base;
+  return settings.leftovers ? factor * 2 : factor;
+}
+
+// Rounds to something you'd actually measure, rather than "1.73 carrots".
+function scaleQty(qty, factor, unit) {
+  if (qty == null) return null;
+  const scaled = qty * factor;
+  if (unit === "g" || unit === "ml") {
+    if (scaled >= 100) return Math.round(scaled / 10) * 10;
+    return Math.max(5, Math.round(scaled / 5) * 5);
+  }
+  if (unit === "kg" || unit === "L") {
+    return Math.round(scaled * 10) / 10;
+  }
+  // Countable things and spoons: nearest half.
+  return Math.max(0.5, Math.round(scaled * 2) / 2);
+}
+
+function formatQty(n) {
+  if (n == null) return "";
+  const whole = Math.floor(n);
+  const frac = n - whole;
+  if (frac === 0) return String(whole);
+  if (frac === 0.5) return whole === 0 ? "½" : `${whole}½`;
+  return String(Math.round(n * 100) / 100);
+}
+
+// "3 carrot" reads wrong on a shopping list. Only applies to countable items
+// (no unit) that aren't already written plural.
+function pluraliseItem(item, qty) {
+  if (qty == null || qty <= 1) return item;
+  if (/(s|sh|ch|x)$/i.test(item)) return item;
+  return item + "s";
+}
+
+// Assembles one shopping-list line: "450g beef mince", "1½ brown onions".
+function formatIngredient(ing, factor) {
+  const qty = scaleQty(ing.qty, factor, ing.unit);
+  if (qty == null) return ing.item;
+  const spacer = ing.unit.length > 2 ? " " : "";
+  const unit = ing.unit ? `${spacer}${ing.unit} ` : " ";
+  const item = ing.unit ? ing.item : pluraliseItem(ing.item, qty);
+  return `${formatQty(qty)}${unit}${item}`.replace(/\s+/g, " ").trim();
+}
+
+// ---------------------------------------------------------------------------
+// Week projection. Simple arithmetic only — roll the cycle day forward and
+// wrap once it passes the average cycle length.
+// ---------------------------------------------------------------------------
+
+function projectedCycleDay(cycleDay, offset, avgCycleLength) {
+  const raw = cycleDay + offset;
+  // Already overdue: keep counting rather than inventing a new cycle.
+  if (cycleDay > avgCycleLength) return raw;
+  if (raw <= avgCycleLength) return raw;
+  return ((raw - avgCycleLength - 1) % avgCycleLength) + 1;
+}
+
+// ---------------------------------------------------------------------------
+// Dietary filtering
+// ---------------------------------------------------------------------------
+
+function recipeMatchesDietary(recipe, dietary) {
+  if (!dietary || dietary.length === 0) return true;
+  return dietary.every((tag) => recipe.tags.includes(tag));
+}
+
+function alternativesFor(recipes, mealType, dietary, excludeId) {
+  return Object.entries(recipes)
+    .filter(([id, r]) => r.meal === mealType && id !== excludeId && recipeMatchesDietary(r, dietary))
+    .map(([id, r]) => ({ id, ...r }));
+}
+
+// A stable integer per calendar date, so the meal picked for a given day is
+// always the same one — but different from its neighbours.
+function dayIndexFor(dateIso) {
+  return daysBetween(new Date(2000, 0, 1), parseLocalDate(dateIso));
+}
+
+// Rotates through a phase's options so a week-long phase doesn't serve the
+// same dinner seven nights running. Falls back to any compatible recipe if
+// the phase's own options are all filtered out by dietary settings.
+function suggestedRecipeId(recipes, phaseMeals, mealType, dateIso, dietary) {
+  const options = phaseMeals[mealType];
+  const pool = (Array.isArray(options) ? options : [options]).filter(
+    (id) => recipes[id] && recipeMatchesDietary(recipes[id], dietary)
+  );
+
+  if (pool.length === 0) {
+    const fallback = alternativesFor(recipes, mealType, dietary, null);
+    return fallback.length ? fallback[dayIndexFor(dateIso) % fallback.length].id : null;
+  }
+
+  return pool[dayIndexFor(dateIso) % pool.length];
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     parseLocalDate,
@@ -112,6 +223,17 @@ if (typeof module !== "undefined") {
     getDaysUntilNextPeriod,
     isPeriodLate,
     validateNewPeriodDate,
+    portionsFor,
+    scaleFactor,
+    scaleQty,
+    formatQty,
+    projectedCycleDay,
+    recipeMatchesDietary,
+    alternativesFor,
+    dayIndexFor,
+    suggestedRecipeId,
+    pluraliseItem,
+    formatIngredient,
   };
 }
 
@@ -124,9 +246,18 @@ if (typeof module !== "undefined") {
 if (typeof document !== "undefined") {
   const STORAGE_KEY = "cycleApp";
   const DEFAULT_STATE = {
-    version: 1,
-    settings: { cycleLength: 28, periodLength: 5 },
+    version: 2,
+    settings: {
+      cycleLength: 28,
+      periodLength: 5,
+      adults: 2,
+      children: 2,
+      leftovers: false,
+      dietary: ["gluten-free"],
+    },
     periods: [],
+    // Per-date meal swaps: { "2026-09-04": { dinner: "gf-bolognese" } }
+    mealOverrides: {},
   };
 
   function loadState() {
@@ -136,9 +267,10 @@ if (typeof document !== "undefined") {
       const parsed = JSON.parse(raw);
       const settings = { ...DEFAULT_STATE.settings, ...(parsed.settings || {}) };
       return {
-        version: 1,
+        version: 2,
         settings,
         periods: normalizePeriods(parsed.periods, settings),
+        mealOverrides: parsed.mealOverrides && typeof parsed.mealOverrides === "object" ? parsed.mealOverrides : {},
       };
     } catch (e) {
       return structuredClone(DEFAULT_STATE);
@@ -186,6 +318,7 @@ if (typeof document !== "undefined") {
     navButtons.forEach((btn) => {
       btn.classList.toggle("is-active", btn.dataset.nav === name);
     });
+    if (name === "week") renderWeek();
     if (name === "history") renderHistory();
     if (name === "settings") renderSettings();
   }
@@ -236,7 +369,7 @@ if (typeof document !== "undefined") {
 
     document.getElementById("food-focus").textContent = info.food.focus;
     renderList("food-eat", info.food.eat);
-    renderList("food-meals", info.food.meals);
+    renderMealButtons("food-meals", isoFromDate(today), phase);
 
     document.getElementById("training-focus").textContent = info.training.focus;
     renderList("training-do", info.training.do);
@@ -249,6 +382,42 @@ if (typeof document !== "undefined") {
     items.forEach((item) => {
       const li = document.createElement("li");
       li.textContent = item;
+      el.appendChild(li);
+    });
+  }
+
+  const MEAL_TYPES = ["breakfast", "lunch", "dinner"];
+
+  // The recipe for a given date + meal: an explicit swap if there is one,
+  // otherwise the phase default, falling back to any recipe that fits the
+  // dietary settings if the default doesn't.
+  function recipeIdFor(dateIso, phase, mealType) {
+    const override = state.mealOverrides[dateIso] && state.mealOverrides[dateIso][mealType];
+    if (override && RECIPES[override]) return override;
+    return suggestedRecipeId(RECIPES, CONTENT[phase].food.meals, mealType, dateIso, state.settings.dietary);
+  }
+
+  function renderMealButtons(containerId, dateIso, phase) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = "";
+    MEAL_TYPES.forEach((mealType) => {
+      const recipeId = recipeIdFor(dateIso, phase, mealType);
+      const recipe = RECIPES[recipeId];
+      const li = document.createElement("li");
+      li.className = "meal-item";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "meal-btn";
+      btn.innerHTML =
+        `<span class="meal-label">${mealType}</span>` +
+        `<span class="meal-name"></span>` +
+        `<span class="meal-time"></span>`;
+      btn.querySelector(".meal-name").textContent = recipe.name;
+      btn.querySelector(".meal-time").textContent = recipe.time;
+      btn.addEventListener("click", () => openRecipeModal(recipeId, dateIso, phase, mealType));
+
+      li.appendChild(btn);
       el.appendChild(li);
     });
   }
@@ -280,6 +449,264 @@ if (typeof document !== "undefined") {
     const m = String(date.getMonth() + 1).padStart(2, "0");
     const d = String(date.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
+  }
+
+  // ---- Week screen -------------------------------------------------------
+
+  function renderWeek() {
+    const today = todayLocalMidnight();
+    const cycleDay = getCurrentCycleDay(state.periods, today);
+    const list = document.getElementById("week-list");
+    const empty = document.getElementById("week-empty");
+    list.innerHTML = "";
+
+    if (cycleDay === null) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+
+    const avg = getAverageCycleLength(state.periods, state.settings);
+    const currentPeriod = sortedPeriods(state.periods)[0];
+
+    for (let offset = 0; offset < 7; offset++) {
+      const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+      const dateIso = isoFromDate(date);
+      const day = projectedCycleDay(cycleDay, offset, avg);
+
+      // Only the current cycle knows its real period length; projected cycles
+      // fall back to the setting.
+      const rolledOver = day < cycleDay + offset;
+      const periodLength = rolledOver ? state.settings.periodLength : (currentPeriod.length ?? state.settings.periodLength);
+      const phase = getPhase(day, { ...state.settings, periodLength });
+      const info = CONTENT[phase];
+
+      const card = document.createElement("li");
+      card.className = "week-day";
+      card.style.setProperty("--day-color", info.color);
+
+      const header = document.createElement("div");
+      header.className = "week-day-header";
+      header.innerHTML =
+        `<span class="week-date"></span>` +
+        `<span class="week-phase"></span>`;
+      header.querySelector(".week-date").textContent =
+        offset === 0 ? "Today" : date.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "short" });
+      header.querySelector(".week-phase").textContent = `Day ${day} · ${info.label}`;
+      card.appendChild(header);
+
+      const meals = document.createElement("ul");
+      meals.className = "week-meals";
+      meals.id = `week-meals-${dateIso}`;
+      card.appendChild(meals);
+
+      list.appendChild(card);
+      renderMealButtons(meals.id, dateIso, phase);
+    }
+  }
+
+  // ---- Recipe modal ------------------------------------------------------
+
+  const modal = document.getElementById("modal");
+  const modalBody = document.getElementById("modal-body");
+
+  function closeModal() {
+    modal.hidden = true;
+    modalBody.innerHTML = "";
+  }
+
+  document.getElementById("modal-close").addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !modal.hidden) closeModal();
+  });
+
+  function openRecipeModal(recipeId, dateIso, phase, mealType) {
+    const recipe = RECIPES[recipeId];
+    modalBody.innerHTML = "";
+
+    const title = document.createElement("h2");
+    title.className = "modal-title";
+    title.textContent = recipe.name;
+    modalBody.appendChild(title);
+
+    const meta = document.createElement("p");
+    meta.className = "modal-meta";
+    const mealLabel = mealType.charAt(0).toUpperCase() + mealType.slice(1);
+    meta.textContent = `${mealLabel} · ${recipe.time} · ${recipe.tags.join(", ")}`;
+    modalBody.appendChild(meta);
+
+    // --- servings controls ---
+    const controls = document.createElement("div");
+    controls.className = "servings";
+
+    const adultsField = buildNumberSelect("Adults", 1, 8, state.settings.adults);
+    const childrenField = buildNumberSelect("Toddlers", 0, 8, state.settings.children);
+
+    const leftoversLabel = document.createElement("label");
+    leftoversLabel.className = "leftovers";
+    const leftoversBox = document.createElement("input");
+    leftoversBox.type = "checkbox";
+    leftoversBox.checked = !!state.settings.leftovers;
+    leftoversLabel.appendChild(leftoversBox);
+    leftoversLabel.appendChild(document.createTextNode(" Cook extra for leftovers"));
+
+    controls.appendChild(adultsField.wrapper);
+    controls.appendChild(childrenField.wrapper);
+    modalBody.appendChild(controls);
+    modalBody.appendChild(leftoversLabel);
+
+    // --- ingredients ---
+    const ingHeading = document.createElement("h3");
+    ingHeading.className = "modal-subhead";
+    modalBody.appendChild(ingHeading);
+
+    const ingList = document.createElement("ul");
+    ingList.className = "ingredients";
+    modalBody.appendChild(ingList);
+
+    function renderIngredients() {
+      const settings = {
+        ...state.settings,
+        adults: Number(adultsField.select.value),
+        children: Number(childrenField.select.value),
+        leftovers: leftoversBox.checked,
+      };
+      const factor = scaleFactor(recipe, settings);
+      const portions = portionsFor(settings) * (settings.leftovers ? 2 : 1);
+      ingHeading.textContent = `What to buy — makes about ${formatQty(Math.round(portions * 2) / 2)} adult portions`;
+
+      ingList.innerHTML = "";
+      recipe.ingredients.forEach((ing) => {
+        const li = document.createElement("li");
+        li.textContent = formatIngredient(ing, factor);
+        ingList.appendChild(li);
+      });
+    }
+
+    function persistServings() {
+      state.settings.adults = Number(adultsField.select.value);
+      state.settings.children = Number(childrenField.select.value);
+      state.settings.leftovers = leftoversBox.checked;
+      saveState(state);
+      renderIngredients();
+    }
+
+    adultsField.select.addEventListener("change", persistServings);
+    childrenField.select.addEventListener("change", persistServings);
+    leftoversBox.addEventListener("change", persistServings);
+    renderIngredients();
+
+    // --- method ---
+    const methodHeading = document.createElement("h3");
+    methodHeading.className = "modal-subhead";
+    methodHeading.textContent = "Method";
+    modalBody.appendChild(methodHeading);
+
+    const methodList = document.createElement("ol");
+    methodList.className = "method";
+    recipe.method.forEach((step) => {
+      const li = document.createElement("li");
+      li.textContent = step;
+      methodList.appendChild(li);
+    });
+    modalBody.appendChild(methodList);
+
+    if (recipe.note) {
+      const note = document.createElement("p");
+      note.className = "modal-note";
+      note.textContent = recipe.note;
+      modalBody.appendChild(note);
+    }
+
+    // --- swap ---
+    const swapBtn = document.createElement("button");
+    swapBtn.type = "button";
+    swapBtn.className = "btn btn-secondary btn-block";
+    swapBtn.textContent = "Swap this meal";
+    swapBtn.addEventListener("click", () => openSwapList(recipeId, dateIso, phase, mealType));
+    modalBody.appendChild(swapBtn);
+
+    modal.hidden = false;
+    modalBody.scrollTop = 0;
+  }
+
+  function buildNumberSelect(labelText, min, max, value) {
+    const wrapper = document.createElement("label");
+    wrapper.className = "servings-field";
+    const span = document.createElement("span");
+    span.className = "servings-label";
+    span.textContent = labelText;
+    const select = document.createElement("select");
+    for (let i = min; i <= max; i++) {
+      const opt = document.createElement("option");
+      opt.value = String(i);
+      opt.textContent = String(i);
+      if (i === value) opt.selected = true;
+      select.appendChild(opt);
+    }
+    wrapper.appendChild(span);
+    wrapper.appendChild(select);
+    return { wrapper, select };
+  }
+
+  function openSwapList(currentId, dateIso, phase, mealType) {
+    modalBody.innerHTML = "";
+
+    const title = document.createElement("h2");
+    title.className = "modal-title";
+    title.textContent = `Choose a different ${mealType}`;
+    modalBody.appendChild(title);
+
+    const meta = document.createElement("p");
+    meta.className = "modal-meta";
+    meta.textContent = `Matching your settings: ${state.settings.dietary.length ? state.settings.dietary.join(", ") : "no restrictions"}`;
+    modalBody.appendChild(meta);
+
+    const options = alternativesFor(RECIPES, mealType, state.settings.dietary, currentId);
+    const list = document.createElement("ul");
+    list.className = "swap-list";
+
+    options.forEach((recipe) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "meal-btn";
+      btn.innerHTML = `<span class="meal-name"></span><span class="meal-time"></span>`;
+      btn.querySelector(".meal-name").textContent = recipe.name;
+      btn.querySelector(".meal-time").textContent = recipe.time;
+      btn.addEventListener("click", () => {
+        if (!state.mealOverrides[dateIso]) state.mealOverrides[dateIso] = {};
+        state.mealOverrides[dateIso][mealType] = recipe.id;
+        saveState(state);
+        renderHome();
+        renderWeek();
+        openRecipeModal(recipe.id, dateIso, phase, mealType);
+      });
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+
+    modalBody.appendChild(list);
+
+    if (state.mealOverrides[dateIso] && state.mealOverrides[dateIso][mealType]) {
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.className = "btn btn-secondary btn-block";
+      reset.textContent = "Back to the suggested meal";
+      reset.addEventListener("click", () => {
+        delete state.mealOverrides[dateIso][mealType];
+        saveState(state);
+        renderHome();
+        renderWeek();
+        openRecipeModal(recipeIdFor(dateIso, phase, mealType), dateIso, phase, mealType);
+      });
+      modalBody.appendChild(reset);
+    }
+
+    modalBody.scrollTop = 0;
   }
 
   // ---- History screen --------------------------------------------------
@@ -396,7 +823,43 @@ if (typeof document !== "undefined") {
   function renderSettings() {
     document.getElementById("setting-cycle-length").value = state.settings.cycleLength;
     document.getElementById("setting-period-length").value = state.settings.periodLength;
+    document.getElementById("setting-adults").value = String(state.settings.adults);
+    document.getElementById("setting-children").value = String(state.settings.children);
+    document.getElementById("setting-leftovers").checked = !!state.settings.leftovers;
+    renderDietaryOptions();
   }
+
+  function renderDietaryOptions() {
+    const container = document.getElementById("setting-dietary");
+    container.innerHTML = "";
+    DIETARY_OPTIONS.forEach((option) => {
+      const label = document.createElement("label");
+      label.className = "checkbox-row";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = option.id;
+      box.checked = state.settings.dietary.includes(option.id);
+      label.appendChild(box);
+      label.appendChild(document.createTextNode(" " + option.label));
+      container.appendChild(label);
+    });
+  }
+
+  // Populate the adults/toddlers dropdowns once.
+  (function fillServingSelects() {
+    [
+      { id: "setting-adults", min: 1, max: 8 },
+      { id: "setting-children", min: 0, max: 8 },
+    ].forEach(({ id, min, max }) => {
+      const select = document.getElementById(id);
+      for (let i = min; i <= max; i++) {
+        const opt = document.createElement("option");
+        opt.value = String(i);
+        opt.textContent = String(i);
+        select.appendChild(opt);
+      }
+    });
+  })();
 
   document.getElementById("settings-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -410,9 +873,19 @@ if (typeof document !== "undefined") {
       alert("Period length should be between 1 and 15 days.");
       return;
     }
-    state.settings = { cycleLength, periodLength };
+    const dietary = Array.from(document.querySelectorAll("#setting-dietary input:checked")).map((b) => b.value);
+    state.settings = {
+      ...state.settings,
+      cycleLength,
+      periodLength,
+      adults: Number(document.getElementById("setting-adults").value),
+      children: Number(document.getElementById("setting-children").value),
+      leftovers: document.getElementById("setting-leftovers").checked,
+      dietary,
+    };
     saveState(state);
     renderHome();
+    renderWeek();
     alert("Settings saved.");
   });
 
@@ -444,12 +917,14 @@ if (typeof document !== "undefined") {
         }
         const settings = { ...DEFAULT_STATE.settings, ...parsed.settings };
         state = {
-          version: 1,
+          version: 2,
           settings,
           periods: normalizePeriods(parsed.periods, settings),
+          mealOverrides: parsed.mealOverrides && typeof parsed.mealOverrides === "object" ? parsed.mealOverrides : {},
         };
         saveState(state);
         renderHome();
+        renderWeek();
         renderHistory();
         renderSettings();
         alert("Import complete.");
@@ -466,6 +941,7 @@ if (typeof document !== "undefined") {
       state = structuredClone(DEFAULT_STATE);
       saveState(state);
       renderHome();
+      renderWeek();
       renderHistory();
       renderSettings();
       alert("Everything deleted.");

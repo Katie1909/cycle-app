@@ -37,8 +37,8 @@
         <p id="food-focus" class="card-focus"></p>
         <h3 class="card-subhead">Lean into</h3>
         <ul id="food-eat" class="card-list"></ul>
-        <h3 class="card-subhead">Meals</h3>
-        <ul id="food-meals" class="card-list"></ul>
+        <h3 class="card-subhead">Meals — tap for the recipe</h3>
+        <ul id="food-meals" class="meal-list"></ul>
       </section>
 
       <section class="card">
@@ -52,6 +52,20 @@
 
       <button id="log-period-btn" class="btn btn-primary btn-block">Log period started today</button>
     </div>
+  </section>
+
+  <!-- ============ WEEK ============ -->
+  <section data-screen="week" class="screen" hidden>
+    <header class="page-header">
+      <h1>The week ahead</h1>
+      <p class="page-sub">Plan and prep. Tap any meal for the recipe.</p>
+    </header>
+
+    <div id="week-empty" class="empty-state" hidden>
+      <p>Log a period first and your week will fill in.</p>
+    </div>
+
+    <ul id="week-list" class="week-list"></ul>
   </section>
 
   <!-- ============ HISTORY ============ -->
@@ -77,14 +91,36 @@
     </header>
 
     <form id="settings-form" class="settings-form">
+      <h2 class="settings-heading">Your cycle</h2>
       <label class="field">
         <span class="field-label">Cycle length (days)</span>
         <input type="number" id="setting-cycle-length" min="10" max="60" required>
       </label>
       <label class="field">
-        <span class="field-label">Period length (days)</span>
+        <span class="field-label">Default period length (days)</span>
         <input type="number" id="setting-period-length" min="1" max="15" required>
       </label>
+
+      <h2 class="settings-heading">Cooking for</h2>
+      <div class="servings">
+        <label class="servings-field">
+          <span class="servings-label">Adults</span>
+          <select id="setting-adults"></select>
+        </label>
+        <label class="servings-field">
+          <span class="servings-label">Toddlers</span>
+          <select id="setting-children"></select>
+        </label>
+      </div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="setting-leftovers"> Cook extra for leftovers
+      </label>
+      <p class="field-hint">A toddler counts as half an adult portion when scaling recipes.</p>
+
+      <h2 class="settings-heading">Dietary requirements</h2>
+      <div id="setting-dietary"></div>
+      <p class="field-hint">Only recipes matching everything ticked will be suggested.</p>
+
       <button type="submit" class="btn btn-primary btn-block">Save settings</button>
     </form>
 
@@ -102,10 +138,18 @@
 </main>
 
 <nav class="bottom-nav">
-  <button data-nav="home" class="nav-btn is-active">Home</button>
+  <button data-nav="home" class="nav-btn is-active">Today</button>
+  <button data-nav="week" class="nav-btn">Week</button>
   <button data-nav="history" class="nav-btn">History</button>
   <button data-nav="settings" class="nav-btn">Settings</button>
 </nav>
+
+<div id="modal" class="modal" hidden>
+  <div class="modal-panel" role="dialog" aria-modal="true">
+    <button id="modal-close" class="modal-close" type="button" aria-label="Close">Close</button>
+    <div id="modal-body" class="modal-content"></div>
+  </div>
+</div>
 
 <script src="content.js"></script>
 <script src="app.js"></script>

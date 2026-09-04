@@ -187,6 +187,258 @@ h1, h2, h3 {
   font-size: 16px;
 }
 
+/* ---- meal buttons ---- */
+
+.meal-list,
+.week-meals,
+.swap-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.meal-item {
+  margin-bottom: 8px;
+}
+
+.meal-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  min-height: 44px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--phase-color);
+  border-radius: 12px;
+  background: var(--bg);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.meal-label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  margin-bottom: 2px;
+}
+
+.meal-name {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.meal-time {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+/* ---- week ---- */
+
+.page-sub {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+}
+
+.week-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.week-day {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--day-color, var(--phase-color));
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.week-day .meal-btn {
+  border-left-color: var(--day-color, var(--phase-color));
+}
+
+.week-day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.week-date {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.week-phase {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--day-color, var(--phase-color));
+}
+
+/* ---- modal ---- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 24, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 50;
+}
+
+/* `display: flex` above would otherwise beat the `hidden` attribute. */
+[hidden] {
+  display: none !important;
+}
+
+.modal-panel {
+  background: var(--surface);
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  border-radius: 20px 20px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-close {
+  align-self: flex-end;
+  margin: 8px 12px 0;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--phase-color);
+  cursor: pointer;
+}
+
+.modal-content {
+  overflow-y: auto;
+  padding: 0 20px calc(24px + env(safe-area-inset-bottom));
+}
+
+.modal-title {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.modal-meta {
+  margin: 0 0 16px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.modal-subhead {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  margin: 20px 0 8px;
+}
+
+.ingredients,
+.method {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.ingredients li,
+.method li {
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.modal-note {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  background: var(--bg);
+  border-left: 3px solid var(--phase-color);
+  border-radius: 8px;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+/* ---- servings controls ---- */
+
+.servings {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.servings-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.servings-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+
+.servings-field select {
+  min-height: 44px;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.leftovers,
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.leftovers input,
+.checkbox-row input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--phase-color);
+}
+
+.settings-heading {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  margin: 20px 0 10px;
+}
+
+.settings-heading:first-child {
+  margin-top: 0;
+}
+
+.field-hint {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
 /* ---- history ---- */
 
 .history-list {

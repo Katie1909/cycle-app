@@ -16,6 +16,7 @@
 <ul id="results"></ul>
 <div id="summary"></div>
 
+<script src="content.js"></script>
 <script src="app.js"></script>
 <script>
   const results = [];
@@ -105,6 +106,156 @@
 
     const tooSoon = validateNewPeriodDate("2026-09-05", [p("2026-09-01")], d(2026, 9, 10));
     assertTrue(tooSoon.ok && tooSoon.warning, "period <10 days after previous is allowed with a warning");
+  }
+
+  // ---- servings scaling ----
+  {
+    const recipe = { baseServings: 2, tags: ["gluten-free"] };
+
+    assertEqual(portionsFor({ adults: 2, children: 2 }), 3, "2 adults + 2 toddlers = 3 adult portions");
+    assertEqual(portionsFor({ adults: 1, children: 0 }), 1, "1 adult, no toddlers = 1 portion");
+
+    assertEqual(scaleFactor(recipe, { adults: 2, children: 2, leftovers: false }), 1.5,
+      "recipe for 2 scaled to 3 portions -> factor 1.5");
+    assertEqual(scaleFactor(recipe, { adults: 2, children: 2, leftovers: true }), 3,
+      "leftovers doubles the factor");
+    assertEqual(scaleFactor(recipe, { adults: 2, children: 0, leftovers: false }), 1,
+      "recipe for 2 with 2 adults -> unchanged");
+
+    // A recipe already written for 4 shouldn't double up for a family of 3 portions.
+    assertEqual(scaleFactor({ baseServings: 4 }, { adults: 2, children: 2, leftovers: false }), 0.75,
+      "recipe written for 4 scales down for 3 portions");
+  }
+
+  // ---- quantity rounding ----
+  {
+    assertEqual(scaleQty(400, 1.5, "g"), 600, "600g stays exact");
+    assertEqual(scaleQty(60, 1.5, "g"), 90, "90g rounds to a sensible number");
+    assertEqual(scaleQty(4, 1.5, ""), 6, "4 eggs x1.5 -> 6 eggs");
+    assertEqual(scaleQty(1, 1.5, ""), 1.5, "1 banana x1.5 -> 1.5 (shown as 1½)");
+    assertEqual(scaleQty(null, 3, ""), null, "'to taste' ingredients are never scaled");
+    assertEqual(scaleQty(1.4, 1.5, "kg"), 2.1, "kg keeps one decimal place");
+    assertTrue(scaleQty(2, 0.1, "") >= 0.5, "scaling down never produces a zero quantity");
+
+    assertEqual(formatQty(1.5), "1½", "1.5 displays as 1½");
+    assertEqual(formatQty(0.5), "½", "0.5 displays as ½");
+    assertEqual(formatQty(3), "3", "whole numbers have no decimal point");
+  }
+
+  // ---- week projection ----
+  {
+    assertEqual(projectedCycleDay(24, 0, 34), 24, "today's cycle day is unchanged");
+    assertEqual(projectedCycleDay(24, 6, 34), 30, "6 days ahead within the same cycle");
+    assertEqual(projectedCycleDay(33, 1, 34), 34, "last day of the cycle");
+    assertEqual(projectedCycleDay(33, 2, 34), 1, "day after the cycle ends rolls to day 1");
+    assertEqual(projectedCycleDay(33, 3, 34), 2, "and keeps counting into the new cycle");
+    assertEqual(projectedCycleDay(40, 3, 34), 43, "an overdue period keeps counting, no fake new cycle");
+  }
+
+  // ---- dietary filtering ----
+  {
+    const gf = { tags: ["gluten-free", "dairy-free"], meal: "dinner" };
+    const notGf = { tags: ["vegetarian"], meal: "dinner" };
+
+    assertTrue(recipeMatchesDietary(gf, ["gluten-free"]), "gluten-free recipe matches a gluten-free requirement");
+    assertEqual(recipeMatchesDietary(notGf, ["gluten-free"]), false, "non-gluten-free recipe is filtered out");
+    assertTrue(recipeMatchesDietary(notGf, []), "no requirements means everything matches");
+    assertEqual(recipeMatchesDietary(gf, ["gluten-free", "vegetarian"]), false,
+      "must match ALL requirements, not just one");
+
+    const pool = { a: gf, b: notGf, c: { tags: ["gluten-free"], meal: "lunch" } };
+    const alts = alternativesFor(pool, "dinner", ["gluten-free"], "a");
+    assertEqual(alts.length, 0, "alternatives exclude the current recipe, other meal types and bad matches");
+  }
+
+  // ---- every shipped recipe is gluten-free and well-formed ----
+  {
+    const ids = Object.keys(RECIPES);
+    assertTrue(ids.length >= 12, `recipe book has enough recipes (${ids.length})`);
+
+    const allGf = ids.every((id) => RECIPES[id].tags.includes("gluten-free"));
+    assertTrue(allGf, "every recipe is tagged gluten-free");
+
+    const wellFormed = ids.every((id) => {
+      const r = RECIPES[id];
+      return r.name && r.meal && r.baseServings > 0 && r.ingredients.length && r.method.length;
+    });
+    assertTrue(wellFormed, "every recipe has a name, meal, servings, ingredients and method");
+
+    // Every phase's meal options must point at recipes that actually exist.
+    const phases = ["menstrual", "follicular", "ovulatory", "luteal"];
+    const mealsResolve = phases.every((phase) =>
+      ["breakfast", "lunch", "dinner"].every((meal) =>
+        CONTENT[phase].food.meals[meal].every((id) => RECIPES[id] && RECIPES[id].meal === meal)
+      )
+    );
+    assertTrue(mealsResolve, "every phase meal option points at an existing recipe of the right type");
+
+    // Every phase needs more than one option per meal, or the week repeats.
+    const enoughVariety = phases.every((phase) =>
+      ["breakfast", "lunch", "dinner"].every((meal) => CONTENT[phase].food.meals[meal].length >= 3)
+    );
+    assertTrue(enoughVariety, "every phase offers at least 3 options per meal type");
+
+    // All phase options must survive the gluten-free filter.
+    const allOptionsGf = phases.every((phase) =>
+      ["breakfast", "lunch", "dinner"].every((meal) =>
+        CONTENT[phase].food.meals[meal].every((id) => recipeMatchesDietary(RECIPES[id], ["gluten-free"]))
+      )
+    );
+    assertTrue(allOptionsGf, "every phase option passes the gluten-free filter");
+
+    // Each meal type needs at least one alternative to swap to.
+    const swappable = ["breakfast", "lunch", "dinner"].every(
+      (meal) => alternativesFor(RECIPES, meal, ["gluten-free"], null).length >= 2
+    );
+    assertTrue(swappable, "every meal type has alternatives available to swap to");
+  }
+
+  // ---- shopping-list line formatting ----
+  {
+    assertEqual(formatIngredient({ item: "carrot", qty: 2, unit: "" }, 1.5), "3 carrots", "countable items pluralise");
+    assertEqual(formatIngredient({ item: "brown onion", qty: 1, unit: "" }, 1.5), "1½ brown onions", "fractions pluralise too");
+    assertEqual(formatIngredient({ item: "eggs", qty: 4, unit: "" }, 1.5), "6 eggs", "already-plural items aren't doubled up");
+    assertEqual(formatIngredient({ item: "beef mince", qty: 300, unit: "g" }, 1.5), "450g beef mince", "grams sit flush against the number");
+    assertEqual(formatIngredient({ item: "olive oil", qty: 1, unit: "tbsp" }, 1.5), "1½ tbsp olive oil", "spoons get a space");
+    assertEqual(formatIngredient({ item: "salt and pepper", qty: null, unit: "" }, 3), "salt and pepper", "'to taste' items show no amount");
+    assertEqual(formatIngredient({ item: "carrot", qty: 1, unit: "" }, 1), "1 carrot", "a single item stays singular");
+  }
+
+  // ---- meal rotation across a week ----
+  {
+    const dietary = ["gluten-free"];
+    const lutealMeals = CONTENT.luteal.food.meals;
+
+    // Seven consecutive days in the same phase must not all serve the same thing.
+    const week = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(2026, 8, 4 + i); // 4-10 Sept 2026
+      const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      week.push(suggestedRecipeId(RECIPES, lutealMeals, "dinner", iso, dietary));
+    }
+    const distinct = new Set(week);
+    assertTrue(distinct.size >= 3, `a week in one phase serves at least 3 different dinners (got ${distinct.size})`);
+
+    // Same date must always give the same answer.
+    const twice = suggestedRecipeId(RECIPES, lutealMeals, "dinner", "2026-09-04", dietary);
+    assertEqual(suggestedRecipeId(RECIPES, lutealMeals, "dinner", "2026-09-04", dietary), twice,
+      "the same date always suggests the same meal");
+
+    // Consecutive days differ.
+    assertTrue(
+      suggestedRecipeId(RECIPES, lutealMeals, "dinner", "2026-09-04", dietary) !==
+        suggestedRecipeId(RECIPES, lutealMeals, "dinner", "2026-09-05", dietary),
+      "consecutive days suggest different dinners"
+    );
+
+    // A dietary setting no phase option satisfies still returns something valid.
+    const vegOnly = suggestedRecipeId(RECIPES, lutealMeals, "dinner", "2026-09-04", ["vegetarian"]);
+    assertTrue(vegOnly === null || RECIPES[vegOnly].tags.includes("vegetarian"),
+      "an unmatchable phase falls back to a compatible recipe rather than a wrong one");
+
+    assertEqual(dayIndexFor("2026-09-05") - dayIndexFor("2026-09-04"), 1, "day index advances by one per day");
   }
 
   const list = document.getElementById("results");
