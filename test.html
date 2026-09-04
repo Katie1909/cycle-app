@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cycle App — Tests</title>
+<style>
+  body { font: 15px/1.5 -apple-system, system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  .pass { color: #1a7d3a; }
+  .fail { color: #c0392b; font-weight: bold; }
+  li { margin-bottom: 4px; }
+  #summary { font-size: 18px; margin-top: 24px; padding-top: 16px; border-top: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<h1>Cycle App — Tests</h1>
+<ul id="results"></ul>
+<div id="summary"></div>
+
+<script src="app.js"></script>
+<script>
+  const results = [];
+  function assertEqual(actual, expected, label) {
+    const pass = JSON.stringify(actual) === JSON.stringify(expected);
+    results.push({ pass, label, actual, expected });
+  }
+  function assertTrue(value, label) {
+    results.push({ pass: !!value, label, actual: value, expected: true });
+  }
+
+  const d = (y, m, day) => new Date(y, m - 1, day);
+
+  // day 1 of a period returns cycleDay 1, phase menstrual
+  {
+    const periods = ["2026-09-01"];
+    const today = d(2026, 9, 1);
+    const cycleDay = getCurrentCycleDay(periods, today);
+    assertEqual(cycleDay, 1, "day 1 of a period -> cycleDay 1");
+    assertEqual(getPhase(cycleDay, { cycleLength: 28, periodLength: 5 }), "menstrual", "day 1 -> menstrual");
+  }
+
+  // day 5 with periodLength 5 is still menstrual; day 6 is follicular
+  {
+    const settings = { cycleLength: 28, periodLength: 5 };
+    assertEqual(getPhase(5, settings), "menstrual", "day 5, periodLength 5 -> menstrual");
+    assertEqual(getPhase(6, settings), "follicular", "day 6, periodLength 5 -> follicular");
+  }
+
+  // a 35-day cycle puts ovulation around day 21, not day 14
+  {
+    const settings = { cycleLength: 35, periodLength: 5 };
+    assertEqual(getPhase(21, settings), "ovulatory", "35-day cycle, day 21 -> ovulatory");
+    assertEqual(getPhase(14, settings), "follicular", "35-day cycle, day 14 -> follicular (not ovulatory)");
+  }
+
+  // averaging works with 2, 3 and 6 logged periods
+  {
+    const settings = { cycleLength: 28, periodLength: 5 };
+    const two = ["2026-09-01", "2026-08-04"]; // 28-day gap
+    assertEqual(getAverageCycleLength(two, settings), 28, "average of 2 periods (28-day gap)");
+
+    const three = ["2026-09-01", "2026-08-04", "2026-07-05"]; // gaps 28, 30
+    assertEqual(getAverageCycleLength(three, settings), 29, "average of 3 periods (28,30 -> 29)");
+
+    const six = [
+      "2026-09-01", "2026-08-04", "2026-07-06", "2026-06-08", "2026-05-11", "2026-04-13",
+    ]; // gaps: 28,29,28,28,28
+    assertEqual(getAverageCycleLength(six, settings), 28, "average of 6 periods (uses last up-to-6 gaps)");
+  }
+
+  // averaging falls back correctly with 0 and 1 logged periods
+  {
+    const settings = { cycleLength: 30, periodLength: 5 };
+    assertEqual(getAverageCycleLength([], settings), 30, "average with 0 periods falls back to settings.cycleLength");
+    assertEqual(getAverageCycleLength(["2026-09-01"], settings), 30, "average with 1 period falls back to settings.cycleLength");
+  }
+
+  // a date crossing a daylight-saving boundary still returns the right day count (Australia/Sydney)
+  {
+    // AEDT->AEST ends 2026-04-05 (clocks back an hour, Sydney). A local-midnight
+    // day count across that boundary must still be a plain calendar diff.
+    const before = d(2026, 4, 1);
+    const after = d(2026, 4, 10);
+    assertEqual(daysBetween(before, after), 9, "day count across Sydney DST boundary (Apr 1 -> Apr 10)");
+
+    // AEST->AEDT starts 2026-10-04 (clocks forward an hour, spring).
+    const beforeSpring = d(2026, 9, 30);
+    const afterSpring = d(2026, 10, 10);
+    assertEqual(daysBetween(beforeSpring, afterSpring), 10, "day count across Sydney DST boundary (Sep 30 -> Oct 10)");
+  }
+
+  // edge cases
+  {
+    assertEqual(getCurrentCycleDay([], d(2026, 9, 1)), null, "no periods logged -> null cycle day");
+
+    const settings = { cycleLength: 28, periodLength: 5 };
+    const periods = ["2026-08-01"]; // 28-day avg cycle, but today is day 35 -> late
+    const today = d(2026, 9, 4);
+    const cycleDay = getCurrentCycleDay(periods, today);
+    assertTrue(isPeriodLate(periods, settings, today), "period 7 days overdue is flagged late");
+    assertEqual(getPhase(cycleDay, settings), "luteal", "late period keeps showing luteal, not day 1");
+
+    const futureCheck = validateNewPeriodDate("2099-01-01", [], d(2026, 9, 4));
+    assertEqual(futureCheck.ok, false, "future-dated period is rejected");
+
+    const tooSoon = validateNewPeriodDate("2026-09-05", ["2026-09-01"], d(2026, 9, 10));
+    assertTrue(tooSoon.ok && tooSoon.warning, "period <10 days after previous is allowed with a warning");
+  }
+
+  const list = document.getElementById("results");
+  let passCount = 0;
+  for (const r of results) {
+    const li = document.createElement("li");
+    li.className = r.pass ? "pass" : "fail";
+    li.textContent = `${r.pass ? "PASS" : "FAIL"} — ${r.label}` +
+      (r.pass ? "" : ` (expected ${JSON.stringify(r.expected)}, got ${JSON.stringify(r.actual)})`);
+    list.appendChild(li);
+    if (r.pass) passCount++;
+  }
+  document.getElementById("summary").innerHTML =
+    `<strong>${passCount} / ${results.length} passed</strong>`;
+</script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cycle</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<main>
+
+  <!-- ============ HOME ============ -->
+  <section data-screen="home" class="screen">
+    <header class="page-header">
+      <h1>Cycle</h1>
+    </header>
+
+    <div id="home-empty" class="empty-state">
+      <p>No periods logged yet.</p>
+      <button id="home-empty-log-btn" class="btn btn-primary">Log period started today</button>
+    </div>
+
+    <div id="home-content">
+      <div class="day-hero">
+        <div id="cycle-day" class="day-number">Day —</div>
+        <div id="phase-name" class="phase-name">—</div>
+        <p id="phase-summary" class="phase-summary"></p>
+        <p id="days-until" class="days-until"></p>
+      </div>
+
+      <section class="card">
+        <h2 class="card-title">Today's food</h2>
+        <p id="food-focus" class="card-focus"></p>
+        <h3 class="card-subhead">Lean into</h3>
+        <ul id="food-eat" class="card-list"></ul>
+        <h3 class="card-subhead">Meals</h3>
+        <ul id="food-meals" class="card-list"></ul>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">Today's training</h2>
+        <p id="training-focus" class="card-focus"></p>
+        <h3 class="card-subhead">Do</h3>
+        <ul id="training-do" class="card-list"></ul>
+        <h3 class="card-subhead">Avoid</h3>
+        <p id="training-avoid" class="card-avoid"></p>
+      </section>
+
+      <button id="log-period-btn" class="btn btn-primary btn-block">Log period started today</button>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section data-screen="history" class="screen" hidden>
+    <header class="page-header">
+      <h1>History</h1>
+    </header>
+
+    <div id="history-empty" class="empty-state" hidden>
+      <p>No periods logged yet.</p>
+    </div>
+
+    <ul id="history-list" class="history-list"></ul>
+
+    <button id="add-past-date-btn" class="btn btn-secondary btn-block">Add a past date</button>
+    <input type="date" id="past-date-input" class="visually-hidden">
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section data-screen="settings" class="screen" hidden>
+    <header class="page-header">
+      <h1>Settings</h1>
+    </header>
+
+    <form id="settings-form" class="settings-form">
+      <label class="field">
+        <span class="field-label">Cycle length (days)</span>
+        <input type="number" id="setting-cycle-length" min="10" max="60" required>
+      </label>
+      <label class="field">
+        <span class="field-label">Period length (days)</span>
+        <input type="number" id="setting-period-length" min="1" max="15" required>
+      </label>
+      <button type="submit" class="btn btn-primary btn-block">Save settings</button>
+    </form>
+
+    <div class="settings-divider"></div>
+
+    <button id="export-btn" class="btn btn-secondary btn-block">Export my data</button>
+    <button id="import-btn" class="btn btn-secondary btn-block">Import data</button>
+    <input type="file" id="import-file-input" accept="application/json" class="visually-hidden">
+
+    <div class="settings-divider"></div>
+
+    <button id="delete-everything-btn" class="btn btn-danger btn-block">Delete everything</button>
+  </section>
+
+</main>
+
+<nav class="bottom-nav">
+  <button data-nav="home" class="nav-btn is-active">Home</button>
+  <button data-nav="history" class="nav-btn">History</button>
+  <button data-nav="settings" class="nav-btn">Settings</button>
+</nav>
+
+<script src="content.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
