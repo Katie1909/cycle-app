@@ -28,10 +28,11 @@
   }
 
   const d = (y, m, day) => new Date(y, m - 1, day);
+  const p = (start, length = 5) => ({ start, length });
 
   // day 1 of a period returns cycleDay 1, phase menstrual
   {
-    const periods = ["2026-09-01"];
+    const periods = [p("2026-09-01")];
     const today = d(2026, 9, 1);
     const cycleDay = getCurrentCycleDay(periods, today);
     assertEqual(cycleDay, 1, "day 1 of a period -> cycleDay 1");
@@ -55,14 +56,14 @@
   // averaging works with 2, 3 and 6 logged periods
   {
     const settings = { cycleLength: 28, periodLength: 5 };
-    const two = ["2026-09-01", "2026-08-04"]; // 28-day gap
+    const two = [p("2026-09-01"), p("2026-08-04")]; // 28-day gap
     assertEqual(getAverageCycleLength(two, settings), 28, "average of 2 periods (28-day gap)");
 
-    const three = ["2026-09-01", "2026-08-04", "2026-07-05"]; // gaps 28, 30
+    const three = [p("2026-09-01"), p("2026-08-04"), p("2026-07-05")]; // gaps 28, 30
     assertEqual(getAverageCycleLength(three, settings), 29, "average of 3 periods (28,30 -> 29)");
 
     const six = [
-      "2026-09-01", "2026-08-04", "2026-07-06", "2026-06-08", "2026-05-11", "2026-04-13",
+      p("2026-09-01"), p("2026-08-04"), p("2026-07-06"), p("2026-06-08"), p("2026-05-11"), p("2026-04-13"),
     ]; // gaps: 28,29,28,28,28
     assertEqual(getAverageCycleLength(six, settings), 28, "average of 6 periods (uses last up-to-6 gaps)");
   }
@@ -71,7 +72,7 @@
   {
     const settings = { cycleLength: 30, periodLength: 5 };
     assertEqual(getAverageCycleLength([], settings), 30, "average with 0 periods falls back to settings.cycleLength");
-    assertEqual(getAverageCycleLength(["2026-09-01"], settings), 30, "average with 1 period falls back to settings.cycleLength");
+    assertEqual(getAverageCycleLength([p("2026-09-01")], settings), 30, "average with 1 period falls back to settings.cycleLength");
   }
 
   // a date crossing a daylight-saving boundary still returns the right day count (Australia/Sydney)
@@ -93,7 +94,7 @@
     assertEqual(getCurrentCycleDay([], d(2026, 9, 1)), null, "no periods logged -> null cycle day");
 
     const settings = { cycleLength: 28, periodLength: 5 };
-    const periods = ["2026-08-01"]; // 28-day avg cycle, but today is day 35 -> late
+    const periods = [p("2026-08-01")]; // 28-day avg cycle, but today is day 35 -> late
     const today = d(2026, 9, 4);
     const cycleDay = getCurrentCycleDay(periods, today);
     assertTrue(isPeriodLate(periods, settings, today), "period 7 days overdue is flagged late");
@@ -102,7 +103,7 @@
     const futureCheck = validateNewPeriodDate("2099-01-01", [], d(2026, 9, 4));
     assertEqual(futureCheck.ok, false, "future-dated period is rejected");
 
-    const tooSoon = validateNewPeriodDate("2026-09-05", ["2026-09-01"], d(2026, 9, 10));
+    const tooSoon = validateNewPeriodDate("2026-09-05", [p("2026-09-01")], d(2026, 9, 10));
     assertTrue(tooSoon.ok && tooSoon.warning, "period <10 days after previous is allowed with a warning");
   }
 

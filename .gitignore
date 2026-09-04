@@ -1,1 +1,6 @@
 .DS_Store
+
+# Never commit personal data — this repo is public.
+# Exports/imports of real cycle history stay on the device only.
+*import*.json
+*export*.json

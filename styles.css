@@ -199,13 +199,18 @@ h1, h2, h3 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   margin-bottom: 8px;
-  min-height: 44px;
-  cursor: pointer;
+}
+
+.history-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .history-date {
@@ -216,6 +221,33 @@ h1, h2, h3 {
 .history-gap {
   color: var(--ink-soft);
   font-size: 14px;
+}
+
+.history-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.history-length-btn,
+.history-delete-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.history-delete-btn {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--surface);
 }
 
 /* ---- settings ---- */

@@ -18,14 +18,19 @@ function daysBetween(a, b) {
   return Math.round((b0 - a0) / msPerDay);
 }
 
+// Each period entry is { start: "YYYY-MM-DD", length: N }. `length` is the
+// actual recorded duration of that period (defaults to settings.periodLength
+// until edited), separate from settings.periodLength which is only the
+// fallback used for a period whose real length isn't known yet.
+
 function sortedPeriods(periods) {
-  return [...periods].sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+  return [...periods].sort((a, b) => (a.start < b.start ? 1 : a.start > b.start ? -1 : 0));
 }
 
 function getCurrentCycleDay(periods, today) {
   if (!periods || periods.length === 0) return null;
   const [mostRecent] = sortedPeriods(periods);
-  const diff = daysBetween(parseLocalDate(mostRecent), today);
+  const diff = daysBetween(parseLocalDate(mostRecent.start), today);
   return diff + 1;
 }
 
@@ -48,7 +53,7 @@ function getAverageCycleLength(periods, settings) {
   const recent = sorted.slice(0, 6);
   const gaps = [];
   for (let i = 0; i < recent.length - 1; i++) {
-    gaps.push(daysBetween(parseLocalDate(recent[i + 1]), parseLocalDate(recent[i])));
+    gaps.push(daysBetween(parseLocalDate(recent[i + 1].start), parseLocalDate(recent[i].start)));
   }
   const sum = gaps.reduce((a, b) => a + b, 0);
   return Math.round(sum / gaps.length);
@@ -58,7 +63,7 @@ function getNextPredictedStart(periods, settings) {
   const sorted = sortedPeriods(periods);
   if (sorted.length === 0) return null;
   const avg = getAverageCycleLength(periods, settings);
-  const mostRecent = parseLocalDate(sorted[0]);
+  const mostRecent = parseLocalDate(sorted[0].start);
   const next = new Date(mostRecent.getFullYear(), mostRecent.getMonth(), mostRecent.getDate() + avg);
   return next;
 }
@@ -83,7 +88,7 @@ function validateNewPeriodDate(dateString, periods, today) {
   }
   const sorted = sortedPeriods(periods);
   if (sorted.length > 0) {
-    const gap = daysBetween(parseLocalDate(sorted[0]), date);
+    const gap = daysBetween(parseLocalDate(sorted[0].start), date);
     if (gap < 10 && gap > 0) {
       return { ok: true, warning: `That's only ${gap} days after your last logged period. Logging it anyway.` };
     }
@@ -129,10 +134,11 @@ if (typeof document !== "undefined") {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return structuredClone(DEFAULT_STATE);
       const parsed = JSON.parse(raw);
+      const settings = { ...DEFAULT_STATE.settings, ...(parsed.settings || {}) };
       return {
         version: 1,
-        settings: { ...DEFAULT_STATE.settings, ...(parsed.settings || {}) },
-        periods: Array.isArray(parsed.periods) ? parsed.periods : [],
+        settings,
+        periods: normalizePeriods(parsed.periods, settings),
       };
     } catch (e) {
       return structuredClone(DEFAULT_STATE);
@@ -141,6 +147,15 @@ if (typeof document !== "undefined") {
 
   function saveState(state) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  // Accepts either the old plain-date-string format or the current
+  // { start, length } object format, and always returns the latter.
+  function normalizePeriods(periods, settings) {
+    if (!Array.isArray(periods)) return [];
+    return periods.map((p) =>
+      typeof p === "string" ? { start: p, length: settings.periodLength } : p
+    );
   }
 
   let state = loadState();
@@ -195,7 +210,9 @@ if (typeof document !== "undefined") {
     emptyState.hidden = true;
     content.hidden = false;
 
-    const phase = getPhase(cycleDay, state.settings);
+    const currentPeriod = sortedPeriods(state.periods)[0];
+    const effectiveSettings = { ...state.settings, periodLength: currentPeriod.length ?? state.settings.periodLength };
+    const phase = getPhase(cycleDay, effectiveSettings);
     const late = isPeriodLate(state.periods, state.settings, today);
     const daysUntil = getDaysUntilNextPeriod(state.periods, state.settings, today);
     const info = CONTENT[phase];
@@ -252,7 +269,7 @@ if (typeof document !== "undefined") {
       return;
     }
     if (check.warning && !confirm(`${check.warning}\n\nLog it anyway?`)) return;
-    state.periods.push(iso);
+    state.periods.push({ start: iso, length: state.settings.periodLength });
     saveState(state);
     renderHome();
     alert("Logged. Day 1 starts today.");
@@ -279,33 +296,72 @@ if (typeof document !== "undefined") {
     }
     empty.hidden = true;
 
-    sorted.forEach((iso, index) => {
+    sorted.forEach((period, index) => {
       const li = document.createElement("li");
       li.className = "history-row";
 
+      const info = document.createElement("div");
+      info.className = "history-info";
+
       const dateSpan = document.createElement("span");
       dateSpan.className = "history-date";
-      dateSpan.textContent = formatDateLong(iso);
+      dateSpan.textContent = formatDateLong(period.start);
 
       const gapSpan = document.createElement("span");
       gapSpan.className = "history-gap";
       if (index < sorted.length - 1) {
-        const gap = daysBetween(parseLocalDate(sorted[index + 1]), parseLocalDate(iso));
+        const gap = daysBetween(parseLocalDate(sorted[index + 1].start), parseLocalDate(period.start));
         gapSpan.textContent = `${gap}-day cycle`;
       } else {
         gapSpan.textContent = "First logged period";
       }
 
-      li.appendChild(dateSpan);
-      li.appendChild(gapSpan);
-      li.addEventListener("click", () => {
-        if (confirm(`Delete the period logged for ${formatDateLong(iso)}?`)) {
-          state.periods = state.periods.filter((p) => p !== iso);
+      info.appendChild(dateSpan);
+      info.appendChild(gapSpan);
+
+      const actions = document.createElement("div");
+      actions.className = "history-actions";
+
+      const lengthBtn = document.createElement("button");
+      lengthBtn.className = "history-length-btn";
+      lengthBtn.type = "button";
+      const length = period.length ?? state.settings.periodLength;
+      lengthBtn.textContent = `${length}d`;
+      lengthBtn.setAttribute("aria-label", `Edit period length, currently ${length} days`);
+      lengthBtn.addEventListener("click", () => {
+        const input = prompt(`How many days did this period last (started ${formatDateLong(period.start)})?`, String(length));
+        if (input === null) return;
+        const newLength = Number(input);
+        if (!Number.isFinite(newLength) || newLength < 1 || newLength > 15) {
+          alert("Period length should be a number between 1 and 15 days.");
+          return;
+        }
+        const target = state.periods.find((p) => p.start === period.start);
+        target.length = newLength;
+        saveState(state);
+        renderHistory();
+        renderHome();
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.className = "history-delete-btn";
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.setAttribute("aria-label", `Delete period logged for ${formatDateLong(period.start)}`);
+      deleteBtn.addEventListener("click", () => {
+        if (confirm(`Delete the period logged for ${formatDateLong(period.start)}?`)) {
+          state.periods = state.periods.filter((p) => p.start !== period.start);
           saveState(state);
           renderHistory();
           renderHome();
         }
       });
+
+      actions.appendChild(lengthBtn);
+      actions.appendChild(deleteBtn);
+
+      li.appendChild(info);
+      li.appendChild(actions);
       list.appendChild(li);
     });
   }
@@ -328,7 +384,7 @@ if (typeof document !== "undefined") {
       e.target.value = "";
       return;
     }
-    state.periods.push(iso);
+    state.periods.push({ start: iso, length: state.settings.periodLength });
     saveState(state);
     renderHistory();
     renderHome();
@@ -386,10 +442,11 @@ if (typeof document !== "undefined") {
         if (!parsed.settings || !Array.isArray(parsed.periods)) {
           throw new Error("Missing settings or periods.");
         }
+        const settings = { ...DEFAULT_STATE.settings, ...parsed.settings };
         state = {
           version: 1,
-          settings: { ...DEFAULT_STATE.settings, ...parsed.settings },
-          periods: parsed.periods,
+          settings,
+          periods: normalizePeriods(parsed.periods, settings),
         };
         saveState(state);
         renderHome();
