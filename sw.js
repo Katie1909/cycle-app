@@ -5,7 +5,7 @@
 // new app.js never loaded. Network-first keeps the app working offline (the
 // cache is still there as a fallback) while always preferring fresh files.
 
-const CACHE_NAME = "cycle-app-v2";
+const CACHE_NAME = "cycle-app-v3";
 const FILES_TO_CACHE = [
   "./index.html",
   "./app.js",
@@ -33,10 +33,14 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
+  // `cache: "no-cache"` forces a revalidation with the server instead of
+  // silently accepting the browser's HTTP-cached copy. Without it, GitHub
+  // Pages' 10-minute cache header meant a "network-first" fetch still handed
+  // back a stale file — and we then cached that stale copy for offline use.
+  // It's a conditional request, so an unchanged file still costs only a 304.
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: "no-cache" })
       .then((response) => {
-        // Keep the cache warm with the newest copy for offline use.
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
         return response;
